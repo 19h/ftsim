@@ -1,0 +1,30 @@
+[package]
+name = "ftsim-engine"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ftsim-types = { path = "../ftsim-types" }
+ftsim-proto = { path = "../ftsim-proto" }
+
+anyhow = { workspace = true }
+bytes = { workspace = true }
+crossbeam-channel = { workspace = true }
+fxhash = { workspace = true }
+indexmap = { workspace = true }
+metrics = { workspace = true }
+petgraph = { workspace = true }
+rand = { workspace = true }
+rand_chacha = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+toml = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[features]
+default = []
+byzantine = []
+serde_json_logs = []
+metrics_prom = []

@@ -1,0 +1,71 @@
+# Scenario: Primary-Backup Split-Brain
+#
+# Goal: Test split-brain prevention and resolution in a Primary-Backup system.
+#
+# Description:
+# A split-brain occurs when a network partition causes multiple nodes (or sets
+# of nodes) to believe they are the primary, leading to data inconsistency.
+# This scenario intentionally creates partitions to induce a split-brain and
+# tests the protocol's mechanisms (e.g., fencing, quorum checks) for preventing
+# or resolving the resulting conflicts.
+
+name = "primary_backup_split_brain"
+seed = 2010
+topology = "FullMesh"
+
+[initial]
+nodes = 3
+proto = 2  # Primary-Backup protocol
+
+stop_at = 15_000_000_000  # 15 seconds
+
+# --- Phase 1: Normal operation (0-2s) ---
+# Establish a clear primary before the partition.
+[[directives]]
+At = [1_000_000_000, { BroadcastBytes = { payload_hex = "4e4f524d414c5f4f5045524154494f4e", proto_tag = 2 } }]
+
+# --- Phase 2: Network partition creates split-brain (2s-5s) ---
+# Isolate the primary (node 0) from its backups {1, 2}. The backups should
+# elect a new primary among themselves, while node 0 still thinks it's primary.
+[[directives]]
+At = [2_000_000_000, { Partition = { sets = [[0], [1, 2]] } }]
+
+# Send conflicting writes to both sides of the partition to test for data divergence.
+[[directives]]
+At = [3_000_000_000, { BroadcastBytes = { payload_hex = "5752495445315f544f5f5041525431", proto_tag = 2 } }]
+[[directives]]
+At = [3_200_000_000, { BroadcastBytes = { payload_hex = "5752495445325f544f5f5041525432", proto_tag = 2 } }]
+
+# --- Phase 3: Partition healing - conflict resolution (5s-8s) ---
+# When the partition heals, the two "primaries" will discover each other.
+# The protocol must have a mechanism to resolve this conflict, typically by
+# demoting one of them and reconciling the divergent data.
+[[directives]]
+At = [5_000_000_000, "HealPartition"]
+[[directives]]
+At = [5_500_000_000, { BroadcastBytes = { payload_hex = "434f4e464c4943545f5245534f4c5554494f4e", proto_tag = 2 } }]
+
+# --- Phase 4: Primary crash during partition (7s-10s) ---
+# A more complex scenario where the primary crashes while partitioned.
+[[directives]]
+At = [7_000_000_000, { Partition = { sets = [[0, 1], [2]] } }]
+[[directives]]
+At = [7_500_000_000, { Crash = { node = 0, duration = 2_000_000_000 } }]
+[[directives]]
+At = [9_000_000_000, "HealPartition"] # Heal while primary is still down.
+
+# --- Phase 5, 6, 7: Advanced tests and final validation ---
+# These phases introduce asymmetric partitions and combined faults to further
+# stress the split-brain resolution logic before a final validation check.
+[[directives]]
+At = [10_000_000_000, { LinkDrop = { link = 1, p = 1.0 } }] # Asymmetric partition
+[[directives]]
+At = [11_500_000_000, { LinkDrop = { link = 1, p = 0.0 } }]
+[[directives]]
+At = [12_000_000_000, { Partition = { sets = [[0], [1, 2]] } }]
+[[directives]]
+At = [12_100_000_000, { StoreFault = { node = 0, kind = "FsyncFail", rate = 0.3 } }]
+[[directives]]
+At = [13_300_000_000, "HealPartition"]
+[[directives]]
+At = [14_700_000_000, { BroadcastBytes = { payload_hex = "4e4f524d414c5f524553544f524154494f4e", proto_tag = 2 } }]

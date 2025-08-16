@@ -1,0 +1,11 @@
+[package]
+name = "ftsim-types"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bytes = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+serde_yaml = { workspace = true }
+toml = { workspace = true }

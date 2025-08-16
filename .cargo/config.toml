@@ -1,0 +1,7 @@
+# This file provides default RUSTFLAGS for deterministic builds and optimizations.
+
+[build]
+rustflags = [
+  # For determinism: prevent embedding build-time random data.
+  "-C", "embed-bitcode=y",
+]

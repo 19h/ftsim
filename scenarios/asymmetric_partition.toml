@@ -1,0 +1,72 @@
+# Scenario: Asymmetric Network Partition
+#
+# Goal: Test protocol resilience against one-way network failures.
+#
+# Description:
+# An asymmetric partition occurs when communication is disrupted in one direction
+# but not the other (e.g., Node A can send to B, but B cannot send to A). This
+# can fool protocols that rely on heartbeats or acknowledgments, potentially
+# leading to incorrect state assumptions or split-brain scenarios. This test
+# creates such conditions to verify that the protocol can handle them gracefully.
+
+name = "asymmetric_partition_test"
+seed = 2002
+topology = "FullMesh"
+
+[initial]
+nodes = 5
+proto = 1  # Raft protocol
+
+stop_at = 8_000_000_000  # 8 seconds
+
+# --- Phase 1: Normal operation (0-2s) ---
+# Allow the cluster to stabilize and elect a leader under normal conditions.
+
+# --- Phase 2: Create asymmetric partition (2s-4s) ---
+# Block all incoming traffic to node 0, but allow outgoing traffic.
+# This simulates a scenario where node 0 (potentially the leader) can send
+# heartbeats, but cannot receive responses or requests from followers.
+[[directives]]
+At = [2_000_000_000, { LinkDrop = { link = 1, p = 1.0 } }]  # Block node 1 -> node 0
+[[directives]]
+At = [2_100_000_000, { LinkDrop = { link = 5, p = 1.0 } }]  # Block node 2 -> node 0
+[[directives]]
+At = [2_200_000_000, { LinkDrop = { link = 9, p = 1.0 } }]  # Block node 3 -> node 0
+[[directives]]
+At = [2_300_000_000, { LinkDrop = { link = 13, p = 1.0 } }] # Block node 4 -> node 0
+
+# --- Phase 3: Test behavior during partition (3s) ---
+# Send a broadcast to test how the cluster behaves. The followers should time
+# out and start a new election, eventually electing a new leader from the
+# majority partition {1, 2, 3, 4}.
+[[directives]]
+At = [3_000_000_000, { BroadcastBytes = { payload_hex = "4153594d4d455452494320504152544954494f4e", proto_tag = 1 } }]  # "ASYMMETRIC PARTITION"
+
+# --- Phase 4: Heal the partition (4s) ---
+# Restore all links to node 0 and allow the cluster to reconverge.
+# The old leader (node 0) should discover the new term and revert to a follower.
+[[directives]]
+At = [4_000_000_000, { LinkDrop = { link = 1, p = 0.0 } }]
+[[directives]]
+At = [4_100_000_000, { LinkDrop = { link = 5, p = 0.0 } }]
+[[directives]]
+At = [4_200_000_000, { LinkDrop = { link = 9, p = 0.0 } }]
+[[directives]]
+At = [4_300_000_000, { LinkDrop = { link = 13, p = 0.0 } }]
+
+# --- Phase 5: Create circular asymmetry (5s-7s) ---
+# A more subtle test where a message can circle the cluster but one link
+# in the chain is broken (4 -> 0).
+[[directives]]
+At = [5_000_000_000, { LinkDrop = { link = 16, p = 1.0 } }]  # Break node 4 -> node 0
+
+# Test the circular asymmetry.
+[[directives]]
+At = [6_000_000_000, { BroadcastBytes = { payload_hex = "434952435f4153594d4d4554524943", proto_tag = 1 } }]  # "CIRC_ASYMMETRIC"
+
+# --- Phase 6: Full healing and final test (7s-8s) ---
+# Restore the final link and verify the cluster returns to a fully operational state.
+[[directives]]
+At = [7_000_000_000, { LinkDrop = { link = 16, p = 0.0 } }]
+[[directives]]
+At = [7_500_000_000, { BroadcastBytes = { payload_hex = "4845414c4544", proto_tag = 1 } }]  # "HEALED"

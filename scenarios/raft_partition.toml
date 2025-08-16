@@ -1,0 +1,36 @@
+# Scenario: Raft Network Partition
+#
+# Goal: A foundational test of Raft's core consensus mechanism.
+#
+# Description:
+# This scenario creates a network partition that separates a 5-node cluster
+# into a majority partition {0,1,2,4} and a minority partition {3}. The majority
+# should be able to elect a new leader and continue operating, while the minority
+# should become unavailable. When the partition heals, the minority node must
+# correctly rejoin the cluster and accept the majority's state.
+# NOTE: This file has been corrected to use valid TOML syntax.
+
+name = "raft partition test"
+seed = 42
+topology = "FullMesh"
+
+[initial]
+nodes = 5
+proto = 1 # Raft protocol
+
+stop_at = 2_000_000_000
+
+# At 5ms, partition the cluster. The majority partition is {0,1,2} and the
+# minority is {3}. Node 4 is not included in any set, so it remains connected
+# to all other nodes, effectively joining the majority.
+[[directives]]
+At = [5_000_000, { Partition = { sets = [[0, 1, 2], [3]] } }]
+
+# 200ms later, heal the partition, restoring full connectivity.
+[[directives]]
+After = { offset = 200_000_000, action = "HealPartition" }
+
+# Periodically add network jitter to a specific link to simulate a
+# less-than-perfect network during the test.
+[[directives]]
+Every = { period = 15_000_000, repeats = 5, action = { LinkDelay = { link = 0, dist = { Uniform = { lo = 1_000_000, hi = 8_000_000 } } } } }

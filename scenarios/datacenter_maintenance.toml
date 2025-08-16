@@ -1,0 +1,67 @@
+# Scenario: Datacenter Maintenance
+#
+# Goal: Test graceful degradation and recovery during a planned, rolling outage.
+#
+# Description:
+# This scenario simulates a planned maintenance window where an entire datacenter
+# (a subset of nodes) is taken offline. It tests the system's ability to fail
+# over to other datacenters, operate with reduced capacity, and seamlessly
+# reintegrate the recovered nodes. An overlapping maintenance window is also
+# tested to verify behavior at minimum quorum.
+
+name = "datacenter_maintenance"
+seed = 2011
+topology = "FullMesh"
+
+[initial]
+nodes = 9  # Simulate 3 datacenters (DC1: 0-2, DC2: 3-5, DC3: 6-8)
+proto = 1  # Raft protocol
+
+stop_at = 15_000_000_000  # 15 seconds
+
+# --- Phase 1 & 2: Normal operation and notification (0-4s) ---
+# Simulate normal operation followed by a "maintenance notification" test.
+[[directives]]
+At = [1_000_000_000, { BroadcastBytes = { payload_hex = "4e4f524d414c5f4441544143454e5445525f4f5045524154494f4e", proto_tag = 1 } }]
+[[directives]]
+At = [2_000_000_000, { BroadcastBytes = { payload_hex = "4d41494e54454e414e43455f4e4f54494649434154494f4e", proto_tag = 1 } }]
+
+# --- Phase 3: DC1 maintenance begins (4s-8s) ---
+# Simulate network degradation to DC1, followed by a graceful, staggered shutdown of its nodes.
+[[directives]]
+At = [4_000_000_000, { LinkDelay = { link = 0, dist = { Uniform = { lo = 50_000_000, hi = 150_000_000 } } } }]
+[[directives]]
+At = [4_500_000_000, { Crash = { node = 0, duration = 3_500_000_000 } }]
+[[directives]]
+At = [4_700_000_000, { Crash = { node = 1, duration = 3_300_000_000 } }]
+[[directives]]
+At = [4_900_000_000, { Crash = { node = 2, duration = 3_100_000_000 } }]
+[[directives]]
+At = [5_500_000_000, { BroadcastBytes = { payload_hex = "524544554345445f43415041434954595f54455354", proto_tag = 1 } }]
+
+# --- Phase 4: DC2 maintenance begins (7s-11s) ---
+# An overlapping maintenance window. With DC1 and DC2 down, only DC3 is
+# operational. This is a critical test of the system's ability to maintain
+# service with minimal quorum (3 out of 9 nodes).
+[[directives]]
+At = [7_500_000_000, { Crash = { node = 3, duration = 3_500_000_000 } }]
+[[directives]]
+At = [7_800_000_000, { Crash = { node = 4, duration = 3_200_000_000 } }]
+[[directives]]
+At = [8_000_000_000, { Crash = { node = 5, duration = 3_000_000_000 } }]
+[[directives]]
+At = [9_000_000_000, { BroadcastBytes = { payload_hex = "4d494e494d414c5f51554f52554d5f54455354", proto_tag = 1 } }]
+
+# --- Phase 5 & 6: DC1 and DC2 recovery (8s-13s) ---
+# Nodes from DC1 begin to recover while DC2 is still down. Then DC2 recovers.
+# This tests the protocol's ability to handle nodes rejoining the cluster
+# and catching up on state.
+[[directives]]
+At = [8_300_000_000, { LinkDelay = { link = 0, dist = { Const = 5_000_000 } } }] # Heal network
+[[directives]]
+At = [11_500_000_000, { BroadcastBytes = { payload_hex = "46554c4c5f44435f5245434f56455259", proto_tag = 1 } }]
+
+# --- Phase 7: Post-maintenance validation (13s-15s) ---
+# After all nodes have recovered, verify that the cluster is fully consistent and stable.
+[[directives]]
+At = [14_000_000_000, { BroadcastBytes = { payload_hex = "46494e414c5f434f4e53495354454e43595f434845434b", proto_tag = 1 } }]

@@ -1,0 +1,53 @@
+# Scenario: Gradual Network Degradation
+#
+# Goal: Test protocol adaptability to slowly worsening network conditions.
+#
+# Description:
+# Instead of sudden failures, this scenario simulates a network that
+# deteriorates over time. It starts with perfect conditions and progressively
+# adds latency and packet loss. This tests adaptive timeout mechanisms and the
+# protocol's ability to maintain performance as conditions change.
+
+name = "gradual_network_degradation"
+seed = 2001
+topology = "FullMesh"
+
+[initial]
+nodes = 5
+proto = 1  # Raft protocol
+
+stop_at = 12_000_000_000
+
+# --- Phase 1: Perfect network (0-2s) ---
+# Establish a baseline under ideal conditions.
+
+# --- Phase 2: Introduce minor delays (2-4s) ---
+# Add small, realistic network jitter.
+[[directives]]
+At = [2_000_000_000, { LinkDelay = { link = 0, dist = { Uniform = { lo = 5_000_000, hi = 15_000_000 } } } }]
+[[directives]]
+At = [2_500_000_000, { LinkDelay = { link = 1, dist = { Uniform = { lo = 10_000_000, hi = 25_000_000 } } } }]
+
+# --- Phase 3: Increase delays further (4-6s) ---
+# Latency increases to levels that might affect performance.
+[[directives]]
+At = [4_000_000_000, { LinkDelay = { link = 0, dist = { Uniform = { lo = 25_000_000, hi = 50_000_000 } } } }]
+[[directives]]
+At = [4_200_000_000, { LinkDelay = { link = 2, dist = { Uniform = { lo = 30_000_000, hi = 60_000_000 } } } }]
+
+# --- Phase 4: Add packet loss (6-8s) ---
+# The network now starts dropping packets in addition to being slow.
+[[directives]]
+At = [6_000_000_000, { LinkDrop = { link = 0, p = 0.05 } }]  # 5% loss
+[[directives]]
+At = [6_500_000_000, { LinkDrop = { link = 1, p = 0.1 } }]   # 10% loss
+
+# --- Phase 5: Severe degradation (8-10s) ---
+# Conditions worsen to the point where they may challenge the protocol's
+# ability to maintain consensus or make progress.
+[[directives]]
+At = [8_000_000_000, { LinkDelay = { link = 0, dist = { Uniform = { lo = 100_000_000, hi = 200_000_000 } } } }]
+[[directives]]
+At = [8_200_000_000, { LinkDrop = { link = 2, p = 0.2 } }]   # 20% loss
+[[directives]]
+At = [9_000_000_000, { BroadcastBytes = { payload_hex = "544553543a6e6574776f726b5f64656772616461746564", proto_tag = 1 } }]

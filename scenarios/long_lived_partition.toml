@@ -1,0 +1,70 @@
+# Scenario: Long-Lived Partition
+#
+# Goal: Test state reconciliation and recovery after an extended network partition.
+#
+# Description:
+# This scenario simulates a major network outage (e.g., a datacenter losing
+# connectivity) that lasts for a long time. During the partition, the two
+# sub-clusters may diverge significantly in state. The primary test is the
+# "healing" phase, where the protocol must correctly and safely reconcile
+# these divergent histories to form a single, consistent state.
+
+name = "long_lived_partition"
+seed = 2013
+topology = "FullMesh"
+
+[initial]
+nodes = 7
+proto = 1  # Raft protocol
+
+stop_at = 30_000_000_000  # 30 seconds
+
+# --- Phase 1: Normal operation (0-2s) ---
+# Establish a baseline before the partition.
+[[directives]]
+At = [1_000_000_000, { BroadcastBytes = { payload_hex = "4e4f524d414c5f4f5045524154494f4e5f4245464f52455f504152544954494f4e", proto_tag = 1 } }]
+
+# --- Phase 2: Create long-lived partition (2s-20.5s) ---
+# Split the cluster into a minority {0,1,2} and a majority {3,4,5,6}.
+# The majority side should be able to continue making progress.
+[[directives]]
+At = [2_000_000_000, { Partition = { sets = [[0, 1, 2], [3, 4, 5, 6]] } }]
+
+# --- Phase 3 & 4: Test behavior and log divergence (2s-15s) ---
+# Send requests to both sides of the partition. Writes to the majority side
+# should succeed, while writes to the minority should fail. This will cause
+# their logs to diverge significantly over the extended period.
+[[directives]]
+At = [3_500_000_000, { BroadcastBytes = { payload_hex = "57524954455f544f5f4d494e4f524954595f53494445", proto_tag = 1 } }]
+[[directives]]
+At = [4_000_000_000, { BroadcastBytes = { payload_hex = "57524954455f544f5f4d414a4f524954595f53494445", proto_tag = 1 } }]
+[[directives]]
+At = [9_000_000_000, { BroadcastBytes = { payload_hex = "4c4f475f444956455247454e43455f4f5645525f54494d45", proto_tag = 1 } }]
+
+# --- Phase 5: Add storage pressure during partition (16.5s) ---
+# Introduce storage faults to complicate the eventual recovery.
+[[directives]]
+At = [16_500_000_000, { StoreFault = { node = 0, kind = "WriteError", rate = 0.05 } }]
+[[directives]]
+At = [16_600_000_000, { StoreFault = { node = 3, kind = "FsyncDelay", rate = 0.1 } }]
+
+# --- Phase 6 & 7: Partition healing and complex recovery (20.5s-27s) ---
+# The most critical part of the test. When the partition heals, the nodes from
+# the old minority partition must detect the new leader and term, roll back their
+# divergent logs, and catch up on all the state they missed.
+[[directives]]
+At = [20_100_000_000, { StoreFault = { node = 0, kind = "WriteError", rate = 0.0 } }] # Heal storage first
+[[directives]]
+At = [20_200_000_000, { StoreFault = { node = 3, kind = "FsyncDelay", rate = 0.0 } }]
+[[directives]]
+At = [20_500_000_000, "HealPartition"]
+[[directives]]
+At = [21_500_000_000, { BroadcastBytes = { payload_hex = "434f4e464c4943545f5245534f4c5554494f4e5f54455354", proto_tag = 1 } }]
+[[directives]]
+At = [23_500_000_000, { BroadcastBytes = { payload_hex = "4c4f475f434f4e53495354454e43595f524550414952", proto_tag = 1 } }]
+
+# --- Phase 8: Post-recovery validation (25s-30s) ---
+# Verify that the entire cluster has converged on a single, consistent state
+# and is fully operational.
+[[directives]]
+At = [27_500_000_000, { BroadcastBytes = { payload_hex = "46494e414c5f53595354454d5f564552494649434154494f4e", proto_tag = 1 } }]

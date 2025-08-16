@@ -1,0 +1,76 @@
+# Scenario: Storage Corruption
+#
+# Goal: Test protocol resilience against various storage-layer failures.
+#
+# Description:
+# This scenario simulates a range of storage failures, from performance
+# degradation (fsync delays) to data corruption (write/read errors).
+# Distributed protocols rely heavily on the integrity of their persistent
+# storage (e.g., the Raft log). This test verifies that the protocol can
+# correctly handle storage errors without violating safety guarantees.
+# NOTE: The `ReadError` kind has been added to the framework to make this executable.
+
+name = "storage_corruption"
+seed = 2020
+topology = "FullMesh"
+
+[initial]
+nodes = 5
+proto = 1  # Raft protocol
+
+stop_at = 25_000_000_000  # 25 seconds
+
+# --- Phase 1: Normal operation (0-3s) ---
+# Establish a baseline with healthy storage.
+[[directives]]
+At = [2_000_000_000, { BroadcastBytes = { payload_hex = "424153454c494e455f53544f524147455f4f5045524154494f4e", proto_tag = 1 } }]
+
+# --- Phase 2: Introduce fsync delays (3s-6s) ---
+# Simulate a slow disk, which can impact commit latency and performance.
+[[directives]]
+At = [3_200_000_000, { StoreFault = { node = 0, kind = "FsyncDelay", rate = 0.2 } }]
+[[directives]]
+At = [4_000_000_000, { StoreFault = { node = 1, kind = "FsyncDelay", rate = 0.5 } }]
+[[directives]]
+At = [5_000_000_000, { StoreFault = { node = 2, kind = "FsyncDelay", rate = 0.8 } }]
+
+# --- Phase 3: Write errors (6s-10s) ---
+# Simulate transient disk write failures. The protocol should retry or
+# handle these errors without losing data.
+[[directives]]
+At = [6_100_000_000, { StoreFault = { node = 0, kind = "FsyncDelay", rate = 0.0 } }] # Clear old faults
+[[directives]]
+At = [6_500_000_000, { StoreFault = { node = 0, kind = "WriteError", rate = 0.1 } }]
+[[directives]]
+At = [7_500_000_000, { StoreFault = { node = 3, kind = "WriteError", rate = 0.15 } }]
+
+# --- Phase 4: Read errors (10s-13s) ---
+# Simulate data corruption on read. This is a critical test of data integrity checks.
+[[directives]]
+At = [10_100_000_000, { StoreFault = { node = 0, kind = "WriteError", rate = 0.0 } }] # Clear old faults
+[[directives]]
+At = [10_500_000_000, { StoreFault = { node = 2, kind = "ReadError", rate = 0.1 } }]
+[[directives]]
+At = [11_500_000_000, { StoreFault = { node = 4, kind = "ReadError", rate = 0.2 } }]
+
+# --- Phase 5: Combined storage faults (13s-17s) ---
+# Create a complex failure mode by enabling different storage faults on
+# different nodes simultaneously.
+[[directives]]
+At = [13_200_000_000, { StoreFault = { node = 0, kind = "FsyncDelay", rate = 0.3 } }]
+[[directives]]
+At = [13_300_000_000, { StoreFault = { node = 1, kind = "WriteError", rate = 0.1 } }]
+[[directives]]
+At = [13_400_000_000, { StoreFault = { node = 3, kind = "ReadError", rate = 0.15 } }]
+
+# --- Phase 6 & 7: Recovery and validation (17s-25s) ---
+# Gradually heal all storage faults and verify that the cluster can recover,
+# repair any inconsistencies, and return to a stable, correct state.
+[[directives]]
+At = [17_200_000_000, { StoreFault = { node = 0, kind = "ReadError", rate = 0.0 } }]
+[[directives]]
+At = [18_000_000_000, { StoreFault = { node = 1, kind = "WriteError", rate = 0.0 } }]
+[[directives]]
+At = [20_200_000_000, { StoreFault = { node = 0, kind = "FsyncDelay", rate = 0.0 } }]
+[[directives]]
+At = [24_500_000_000, { BroadcastBytes = { payload_hex = "53544f524147455f434f5252555054494f4e5f544553545f434f4d504c455445", proto_tag = 1 } }]

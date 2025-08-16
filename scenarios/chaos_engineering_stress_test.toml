@@ -1,0 +1,122 @@
+# Scenario: Chaos Engineering Stress Test
+#
+# Goal: Test system resilience under extreme, concurrent, and unpredictable failures.
+#
+# Description:
+# This scenario embodies the principles of chaos engineering by injecting a wide
+# variety of faults simultaneously and in rapid succession. It combines network
+# partitions, clock skew, node crashes, storage faults, and Byzantine behavior
+# to create a worst-case operational environment. The goal is to uncover hidden
+# bugs and emergent behaviors that only appear under complex, multi-fault conditions.
+
+name = "chaos_engineering_stress_test"
+seed = 2014
+topology = "FullMesh"
+
+[initial]
+nodes = 9
+proto = 1  # Raft protocol
+
+stop_at = 25_000_000_000  # 25 seconds
+
+# --- Phase 1: Baseline (0-2s) ---
+# Brief normal operation before chaos begins.
+[[directives]]
+At = [1_000_000_000, { BroadcastBytes = { payload_hex = "424153454c494e455f45535441424c4953484d454e54", proto_tag = 1 } }]
+
+# --- Phase 2: Initial Chaos - Network & Nodes (2s-5s) ---
+# Start with a complex 3-way partition, severe clock skew, and node crashes.
+[[directives]]
+At = [2_000_000_000, { Partition = { sets = [[0, 1, 2], [3, 4], [5, 6, 7, 8]] } }]
+[[directives]]
+At = [2_100_000_000, { ClockSkew = { node = 0, skew = 500_000_000 } }]
+[[directives]]
+At = [2_200_000_000, { ClockSkew = { node = 1, skew = -300_000_000 } }]
+[[directives]]
+At = [2_300_000_000, { ClockSkew = { node = 3, skew = 1_000_000_000 } }]
+[[directives]]
+At = [2_400_000_000, { ClockSkew = { node = 4, skew = -700_000_000 } }]
+[[directives]]
+At = [2_500_000_000, { Crash = { node = 2, duration = 3_000_000_000 } }]
+[[directives]]
+At = [2_700_000_000, { Crash = { node = 6, duration = 2_500_000_000 } }]
+[[directives]]
+At = [3_000_000_000, { BroadcastBytes = { payload_hex = "494e495449414c5f4348414f535f54455354", proto_tag = 1 } }]
+
+# Add high latency and packet loss within the partitions.
+[[directives]]
+At = [3_500_000_000, { LinkDelay = { link = 0, dist = { Uniform = { lo = 50_000_000, hi = 200_000_000 } } } }]
+[[directives]]
+At = [4_000_000_000, { LinkDrop = { link = 3, p = 0.15 } }]
+[[directives]]
+At = [4_500_000_000, { BroadcastBytes = { payload_hex = "434f4d42494e45445f4e4554574f524b5f4641554c5453", proto_tag = 1 } }]
+
+# --- Phase 3: Storage Chaos (5s-8s) ---
+# Layer storage faults on top of the existing network chaos.
+[[directives]]
+At = [5_000_000_000, { StoreFault = { node = 0, kind = "WriteError", rate = 0.2 } }]
+[[directives]]
+At = [5_100_000_000, { StoreFault = { node = 1, kind = "TornWrite", rate = 0.15 } }]
+[[directives]]
+At = [5_200_000_000, { StoreFault = { node = 5, kind = "FsyncFail", rate = 0.25 } }]
+[[directives]]
+At = [5_300_000_000, { StoreFault = { node = 7, kind = "StaleRead", rate = 0.3 } }]
+[[directives]]
+At = [5_400_000_000, { StoreFault = { node = 8, kind = "FsyncDelay", rate = 0.4 } }]
+[[directives]]
+At = [5_500_000_000, { BroadcastBytes = { payload_hex = "53544f524147455f4348414f535f544553545f31", proto_tag = 1 } }]
+
+# Add Byzantine behavior to the mix.
+[[directives]]
+At = [6_500_000_000, { ByzantineFlip = { node = 8, enabled = true } }]
+[[directives]]
+At = [7_500_000_000, { BroadcastBytes = { payload_hex = "42595a414e54494e455f4348414f535f54455354", proto_tag = 1 } }]
+
+# --- Phase 4: Dynamic Chaos (8s-12s) ---
+# Test adaptability by rapidly changing the fault patterns.
+[[directives]]
+At = [8_000_000_000, "HealPartition"]
+[[directives]]
+At = [8_200_000_000, { Partition = { sets = [[0, 1, 3, 4], [2, 5, 6], [7, 8]] } }] # Re-partition differently
+[[directives]]
+At = [9_000_000_000, { Crash = { node = 1, duration = 500_000_000 } }] # Rapid-fire crashes
+[[directives]]
+At = [9_200_000_000, { Crash = { node = 4, duration = 400_000_000 } }]
+[[directives]]
+At = [9_400_000_000, { Crash = { node = 7, duration = 600_000_000 } }]
+[[directives]]
+At = [10_500_000_000, { LinkDrop = { link = 9, p = 0.5 } }] # Heavy packet loss burst
+
+# --- Phase 5 & 6: Peak Chaos Storm (12s-18s) ---
+# The most intense phase, with nearly all fault types active simultaneously across
+# the cluster to test the absolute limits of its resilience.
+[[directives]]
+At = [12_000_000_000, { ByzantineFlip = { node = 0, enabled = true } }]
+[[directives]]
+At = [12_100_000_000, { ByzantineFlip = { node = 3, enabled = true } }]
+[[directives]]
+At = [12_500_000_000, "HealPartition"] # Heal to force interaction
+[[directives]]
+At = [16_000_000_000, { Partition = { sets = [[0], [1, 2], [3, 4, 5], [6, 7, 8]] } }] # 4-way partition
+[[directives]]
+At = [16_600_000_000, { LinkDrop = { link = 6, p = 0.9 } }] # Nearly dead link
+[[directives]]
+At = [17_000_000_000, { BroadcastBytes = { payload_hex = "4348414f535f53544f524d5f5045414b", proto_tag = 1 } }]
+
+# --- Phase 7 & 8: Gradual Recovery and Validation (18s-25s) ---
+# Slowly heal the system fault-by-fault to test if it can recover from the
+# chaos storm and return to a fully consistent and operational state.
+[[directives]]
+At = [18_000_000_000, { ByzantineFlip = { node = 0, enabled = false } }]
+[[directives]]
+At = [18_500_000_000, "HealPartition"]
+[[directives]]
+At = [19_000_000_000, { StoreFault = { node = 0, kind = "WriteError", rate = 0.05 } }] # Reduce rate
+[[directives]]
+At = [22_000_000_000, { StoreFault = { node = 0, kind = "WriteError", rate = 0.0 } }] # Fully heal
+[[directives]]
+At = [23_000_000_000, { LinkDrop = { link = 0, p = 0.0 } }]
+[[directives]]
+At = [23_500_000_000, { BroadcastBytes = { payload_hex = "46554c4c5f5245434f564552595f56414c49444154494f4e", proto_tag = 1 } }]
+[[directives]]
+At = [24_500_000_000, { BroadcastBytes = { payload_hex = "46494e414c5f5354524553535f544553545f434f4d504c455445", proto_tag = 1 } }]

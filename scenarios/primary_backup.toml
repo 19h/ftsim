@@ -1,0 +1,28 @@
+# Scenario: Primary-Backup Crash Test
+#
+# Goal: A simple test of failover in a Primary-Backup protocol.
+#
+# Description:
+# This basic scenario crashes the initial primary node and then immediately
+# sends a write request. It verifies that a backup node is promoted to
+# primary (or that the system correctly handles the request) and that
+# failover occurs as expected.
+
+name = "primary_backup_crash_test"
+seed = 101
+topology = "FullMesh"
+
+[initial]
+nodes = 3
+proto = 2 # Primary-Backup protocol
+
+stop_at = 1_000_000_000
+
+# At 100ms, crash the initial primary node (node 0) for 500ms.
+[[directives]]
+At = [100_000_000, { Crash = { node = 0, duration = 500_000_000 } }]
+
+# At 110ms, send a write request. The remaining nodes {1, 2} must
+# coordinate to handle this request without the original primary.
+[[directives]]
+At = [110_000_000, { BroadcastBytes = { payload_hex = "57524954453a6b65793d666f6f2c76616c3d626172", proto_tag = 2 } }] # "WRITE:key=foo,val=bar"

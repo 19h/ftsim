@@ -1,0 +1,67 @@
+# Scenario: Flapping Network Links
+#
+# Goal: Test protocol stability under intermittent and unpredictable network connectivity.
+#
+# Description:
+# A "flapping" link rapidly alternates between being available and unavailable.
+# This can cause frequent leadership changes (thrashing), message reordering,
+# and timeout storms. This scenario tests the protocol's timeout mechanisms,
+# connection backoff strategies, and ability to converge despite instability.
+
+name = "flapping_network_test"
+seed = 2003
+topology = "FullMesh"
+
+[initial]
+nodes = 7
+proto = 1  # Raft protocol
+
+stop_at = 8_000_000_000  # 8 seconds
+
+# --- Phase 1: Stable period (0-1s) ---
+# Allow a stable leader to be elected before introducing instability.
+
+# --- Phase 2: Asynchronous flapping (1s-4s) ---
+# Two key links flap with different, overlapping schedules. This creates
+# complex and unpredictable partial partitions.
+[[directives]]
+At = [1_000_000_000, { LinkDrop = { link = 0, p = 1.0 } }]  # Link 0 down
+[[directives]]
+At = [1_200_000_000, { LinkDrop = { link = 0, p = 0.0 } }]  # Link 0 up
+[[directives]]
+At = [1_100_000_000, { LinkDrop = { link = 1, p = 1.0 } }]  # Link 1 down (offset)
+[[directives]]
+At = [1_350_000_000, { LinkDrop = { link = 1, p = 0.0 } }]  # Link 1 up
+# ... pattern repeats ...
+[[directives]]
+At = [2_000_000_000, { LinkDrop = { link = 0, p = 1.0 } }]
+[[directives]]
+At = [2_200_000_000, { LinkDrop = { link = 0, p = 0.0 } }]
+[[directives]]
+At = [2_100_000_000, { LinkDrop = { link = 1, p = 1.0 } }]
+[[directives]]
+At = [2_350_000_000, { LinkDrop = { link = 1, p = 0.0 } }]
+[[directives]]
+At = [3_000_000_000, { BroadcastBytes = { payload_hex = "464c415050494e475f54455354", proto_tag = 1 } }]
+
+# --- Phase 3: Synchronized flapping (4s-6s) ---
+# Multiple links flap at the exact same time. This can be more disruptive
+# as it can cause a majority of nodes to become disconnected simultaneously.
+[[directives]]
+At = [4_000_000_000, { LinkDrop = { link = 0, p = 1.0 } }]
+[[directives]]
+At = [4_000_000_000, { LinkDrop = { link = 1, p = 1.0 } }]
+[[directives]]
+At = [4_200_000_000, { LinkDrop = { link = 0, p = 0.0 } }]
+[[directives]]
+At = [4_200_000_000, { LinkDrop = { link = 1, p = 0.0 } }]
+[[directives]]
+At = [5_000_000_000, { BroadcastBytes = { payload_hex = "53594e435f464c41505f54455354", proto_tag = 1 } }]
+
+# --- Phase 4: Recovery period (6s-8s) ---
+# Stop the flapping and verify that the cluster can quickly recover and
+# re-establish a stable leader.
+[[directives]]
+At = [6_000_000_000, { LinkDelay = { link = 2, dist = { Const = 5_000_000 } } }]
+[[directives]]
+At = [7_000_000_000, { BroadcastBytes = { payload_hex = "5245434f564552595f54455354", proto_tag = 1 } }]

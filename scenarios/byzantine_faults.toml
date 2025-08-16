@@ -1,0 +1,91 @@
+# Scenario: Byzantine Faults
+#
+# Goal: Test system behavior in the presence of malicious or arbitrary node behavior.
+#
+# Description:
+# This scenario introduces Byzantine nodes that can deviate from the protocol in
+# arbitrary ways. While standard Raft is not Byzantine Fault Tolerant (BFT), this
+# test is valuable for assessing how it handles malformed or unexpected messages.
+# It also tests the effectiveness of any implemented sanity checks or guards.
+
+name = "byzantine_faults_test"
+seed = 2006
+topology = "FullMesh"
+
+[initial]
+nodes = 7  # A 7-node cluster can tolerate 2 crash faults (2f+1), but not Byzantine faults.
+proto = 1  # Raft protocol
+
+stop_at = 15_000_000_000  # 15 seconds
+
+# --- Phase 1: Normal operation (0-2s) ---
+# Establish a stable cluster before introducing Byzantine behavior.
+
+# --- Phase 2: Single Byzantine node (2s-5s) ---
+# A single malicious node should not be able to compromise the cluster's integrity,
+# though it may impact availability if it is the leader.
+[[directives]]
+At = [2_000_000_000, { ByzantineFlip = { node = 0, enabled = true } }]
+[[directives]]
+At = [2_500_000_000, { BroadcastBytes = { payload_hex = "42595a414e54494e455f54455354", proto_tag = 1 } }]
+
+# --- Phase 3: Multiple Byzantine nodes (5s-8s) ---
+# With 2 Byzantine nodes in a 7-node cluster, the system is highly vulnerable.
+# This phase tests how the system degrades.
+[[directives]]
+At = [5_000_000_000, { ByzantineFlip = { node = 1, enabled = true } }]
+[[directives]]
+At = [5_500_000_000, { BroadcastBytes = { payload_hex = "4d554c54495f42595a414e54494e45", proto_tag = 1 } }]
+
+# --- Phase 4: Byzantine + Network partition (6s-8s) ---
+# Combine Byzantine behavior with network issues for maximum chaos.
+# This tests the most extreme failure conditions.
+[[directives]]
+At = [6_000_000_000, { Partition = { sets = [[0, 1, 2], [3, 4, 5, 6]] } }]
+[[directives]]
+At = [6_500_000_000, { BroadcastBytes = { payload_hex = "42595a5f5041525449544f4e", proto_tag = 1 } }]
+[[directives]]
+At = [7_500_000_000, "HealPartition"]
+
+# --- Phase 5: Byzantine + Storage faults (8s-10s) ---
+# Test the interaction between malicious logic and unreliable storage.
+[[directives]]
+At = [8_000_000_000, { StoreFault = { node = 0, kind = "TornWrite", rate = 0.2 } }]
+[[directives]]
+At = [8_100_000_000, { StoreFault = { node = 1, kind = "StaleRead", rate = 0.15 } }]
+[[directives]]
+At = [8_500_000_000, { BroadcastBytes = { payload_hex = "42595a5f53544f52414745", proto_tag = 1 } }]
+
+# --- Phase 6: Intermittent Byzantine behavior (10s-12s) ---
+# Toggle Byzantine behavior on and off to test if the system can recover
+# from transient maliciousness and correctly reintegrate nodes.
+[[directives]]
+At = [10_000_000_000, { ByzantineFlip = { node = 0, enabled = false } }]
+[[directives]]
+At = [10_100_000_000, { ByzantineFlip = { node = 1, enabled = false } }]
+[[directives]]
+At = [10_500_000_000, { BroadcastBytes = { payload_hex = "5245434f564552595f5048415345", proto_tag = 1 } }]
+[[directives]]
+At = [11_000_000_000, { ByzantineFlip = { node = 0, enabled = true } }] # Re-enable
+[[directives]]
+At = [11_500_000_000, { BroadcastBytes = { payload_hex = "494e5445524d495454454e54", proto_tag = 1 } }]
+
+# --- Phase 7: Byzantine + Crashes (12s-14s) ---
+# Test how the system handles a Byzantine node that also crashes and recovers.
+[[directives]]
+At = [12_000_000_000, { Crash = { node = 0, duration = 1_000_000_000 } }]
+[[directives]]
+At = [12_500_000_000, { BroadcastBytes = { payload_hex = "42595a5f4352415348", proto_tag = 1 } }]
+
+# --- Phase 8: Recovery and cleanup (13s-15s) ---
+# Disable all faults and verify if the system can eventually return to a consistent state.
+[[directives]]
+At = [13_000_000_000, { ByzantineFlip = { node = 1, enabled = false } }]
+[[directives]]
+At = [13_100_000_000, { StoreFault = { node = 0, kind = "TornWrite", rate = 0.0 } }]
+[[directives]]
+At = [13_200_000_000, { StoreFault = { node = 1, kind = "StaleRead", rate = 0.0 } }]
+[[directives]]
+At = [14_000_000_000, { BroadcastBytes = { payload_hex = "46494e414c5f564552494649434154494f4e", proto_tag = 1 } }]
+[[directives]]
+At = [14_500_000_000, { BroadcastBytes = { payload_hex = "4e4f524d414c5f4f5045524154494f4e", proto_tag = 1 } }]

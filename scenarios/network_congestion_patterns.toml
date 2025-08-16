@@ -1,0 +1,68 @@
+# Scenario: Network Congestion Patterns
+#
+# Goal: Test protocol performance and stability under realistic, time-varying network load.
+#
+# Description:
+# This scenario simulates a "day in the life" of a network, with congestion
+# patterns that mimic typical daily traffic: low overnight traffic, a morning
+# rush, a midday lull, an afternoon spike, and an evening rush. This tests
+# the protocol's adaptive timeouts and its ability to maintain throughput and
+# availability as network conditions change dynamically.
+
+name = "network_congestion_patterns"
+seed = 2012
+topology = "FullMesh"
+
+[initial]
+nodes = 7
+proto = 1  # Raft protocol
+
+stop_at = 20_000_000_000  # 20 seconds
+
+# --- Phase 1: Low traffic period (0-3s) ---
+# Simulate early morning with minimal network congestion and optimal performance.
+[[directives]]
+At = [500_000_000, { BroadcastBytes = { payload_hex = "4c4f575f545241464649435f504552494f44", proto_tag = 1 } }]
+[[directives]]
+At = [1_000_000_000, { LinkDelay = { link = 0, dist = { Uniform = { lo = 1_000_000, hi = 5_000_000 } } } }]
+
+# --- Phase 2 & 3: Morning rush and peak (3-8s) ---
+# Gradually increase network delays and add packet loss to simulate rising congestion.
+[[directives]]
+At = [3_000_000_000, { BroadcastBytes = { payload_hex = "4d4f524e494e475f525553485f424547494e53", proto_tag = 1 } }]
+[[directives]]
+At = [3_600_000_000, { LinkDelay = { link = 6, dist = { Uniform = { lo = 10_000_000, hi = 25_000_000 } } } }]
+[[directives]]
+At = [4_000_000_000, { LinkDrop = { link = 1, p = 0.02 } }]
+[[directives]]
+At = [6_200_000_000, { LinkDelay = { link = 0, dist = { Uniform = { lo = 25_000_000, hi = 75_000_000 } } } }] # Peak delay
+[[directives]]
+At = [6_600_000_000, { LinkDrop = { link = 1, p = 0.05 } }] # Peak drop rate
+
+# --- Phase 4: Midday stabilization (8-11s) ---
+# Congestion eases to a moderate but stable level.
+[[directives]]
+At = [8_000_000_000, { BroadcastBytes = { payload_hex = "4d49444441595f53544142494c495a4154494f4e", proto_tag = 1 } }]
+[[directives]]
+At = [8_400_000_000, { LinkDelay = { link = 6, dist = { Uniform = { lo = 20_000_000, hi = 40_000_000 } } } }]
+
+# --- Phase 5 & 6: Afternoon spike and evening rush (11-16s) ---
+# A second, more severe period of congestion.
+[[directives]]
+At = [11_000_000_000, { BroadcastBytes = { payload_hex = "41465445524e4f4f4e5f5350494b45", proto_tag = 1 } }]
+[[directives]]
+At = [13_200_000_000, { LinkDelay = { link = 0, dist = { Uniform = { lo = 60_000_000, hi = 150_000_000 } } } }]
+[[directives]]
+At = [13_700_000_000, { LinkDrop = { link = 1, p = 0.07 } }]
+
+# --- Phase 7 & 8: Wind-down and return to baseline (16-20s) ---
+# Congestion gradually subsides, and the network returns to optimal conditions.
+# This tests if the protocol can scale its timeouts and expectations back down.
+[[directives]]
+At = [16_000_000_000, { BroadcastBytes = { payload_hex = "4c4154455f4556454e494e475f57494e445f444f574e", proto_tag = 1 } }]
+[[directives]]
+At = [18_200_000_000, { LinkDelay = { link = 0, dist = { Const = 5_000_000 } } }] # Return to baseline
+[[directives]]
+At = [18_700_000_000, { LinkDrop = { link = 1, p = 0.0 } }]
+[[directives]]
+At = [19_500_000_000, { BroadcastBytes = { payload_hex = "46554c4c5f4359434c455f434f4d504c455445", proto_tag = 1 } }]

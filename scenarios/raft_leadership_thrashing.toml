@@ -1,0 +1,76 @@
+# Scenario: Raft Leadership Thrashing
+#
+# Goal: Test protocol stability under frequent, rapid leader elections.
+#
+# Description:
+# "Leadership thrashing" occurs when a cluster cannot maintain a stable leader
+# for a reasonable amount of time, leading to poor availability as the system is
+# constantly in a state of election. This scenario induces thrashing through
+# rapid crashes and network partitions to test if the protocol can eventually
+# converge on a stable leader.
+
+name = "raft_leadership_thrashing"
+seed = 2009
+topology = "FullMesh"
+
+[initial]
+nodes = 5
+proto = 1  # Raft protocol
+
+stop_at = 15_000_000_000  # 15 seconds
+
+# --- Phase 1: Stable operation (0-2s) ---
+# Allow a stable leader to be elected.
+[[directives]]
+At = [1_000_000_000, { BroadcastBytes = { payload_hex = "535441424c455f4c4541444552", proto_tag = 1 } }]
+
+# --- Phase 2: Leader instability through crashes (2s-4s) ---
+# Repeatedly crash the likely leader node just long enough to trigger a new
+# election, but not so long that the cluster stabilizes.
+[[directives]]
+At = [2_000_000_000, { Crash = { node = 0, duration = 300_000_000 } }]
+[[directives]]
+At = [2_200_000_000, { Crash = { node = 1, duration = 250_000_000 } }]
+[[directives]]
+At = [2_350_000_000, { Crash = { node = 2, duration = 200_000_000 } }]
+[[directives]]
+At = [2_450_000_000, { Crash = { node = 3, duration = 300_000_000 } }]
+[[directives]]
+At = [2_600_000_000, { BroadcastBytes = { payload_hex = "52415049445f454c454354494f4e53", proto_tag = 1 } }]
+
+# --- Phase 3: Network-induced leadership instability (4s-7s) ---
+# Use short-lived network partitions to isolate the current leader, forcing
+# the other nodes to elect a new one. Healing and re-partitioning quickly
+# creates leadership chaos.
+[[directives]]
+At = [4_000_000_000, { Partition = { sets = [[2], [0, 1, 3, 4]] } }] # Isolate node 2
+[[directives]]
+At = [4_500_000_000, "HealPartition"]
+[[directives]]
+At = [4_600_000_000, { Partition = { sets = [[0, 1], [2, 3, 4]] } }] # Split cluster
+[[directives]]
+At = [5_200_000_000, "HealPartition"]
+
+# --- Phase 4 & 5: Combined faults (7s-12s) ---
+# Combine crashes, partitions, and clock skew to create the most challenging
+# conditions for establishing a stable leader.
+[[directives]]
+At = [7_000_000_000, { Crash = { node = 1, duration = 500_000_000 } }]
+[[directives]]
+At = [7_200_000_000, { Partition = { sets = [[0, 2], [3, 4]] } }]
+[[directives]]
+At = [7_800_000_000, "HealPartition"]
+[[directives]]
+At = [9_000_000_000, { ClockSkew = { node = 0, skew = 200_000_000 } }]
+[[directives]]
+At = [9_300_000_000, { Crash = { node = 0, duration = 400_000_000 } }]
+
+# --- Phase 6: Recovery and stabilization (12s-15s) ---
+# Remove all faults and give the cluster time to recover. The key test is
+# whether it successfully converges on a single, stable leader.
+[[directives]]
+At = [12_000_000_000, { ClockSkew = { node = 0, skew = 0 } }]
+[[directives]]
+At = [13_000_000_000, { BroadcastBytes = { payload_hex = "53544142494c495a4154494f4e", proto_tag = 1 } }]
+[[directives]]
+At = [14_500_000_000, { BroadcastBytes = { payload_hex = "434f4e53495354454e43595f434845434b", proto_tag = 1 } }]

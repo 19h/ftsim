@@ -1,0 +1,19 @@
+[package]
+name = "ftsim-proto"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ftsim-types = { path = "../ftsim-types" }
+bytes = { workspace = true }
+postcard = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+indexmap = { workspace = true }
+
+[features]
+default = ["raft_lite", "primary_backup"]
+raft_lite = []
+primary_backup = []

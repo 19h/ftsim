@@ -1,0 +1,89 @@
+# Scenario: Cascading Failures
+#
+# Goal: Test system stability under a sequence of dependent failures.
+#
+# Description:
+# This scenario models a common real-world outage pattern where an initial
+# failure increases the load or stress on remaining components, causing a
+# chain reaction of secondary and tertiary failures. It tests the system's
+# load-balancing, backpressure, and graceful degradation mechanisms.
+
+name = "cascading_failures_test"
+seed = 2005
+topology = "FullMesh"
+
+[initial]
+nodes = 7
+proto = 1  # Raft protocol
+
+stop_at = 18_000_000_000  # 18 seconds
+
+# --- Phase 1: Stable operation (0-2s) ---
+# Allow the cluster to operate normally before the initial trigger.
+
+# --- Phase 2: Initial failure triggers cascade (2s-8s) ---
+# An initial, long-duration crash of a single node.
+[[directives]]
+At = [2_000_000_000, { Crash = { node = 0, duration = 4_000_000_000 } }]
+
+# Simulate increased client traffic directed at the remaining nodes.
+[[directives]]
+At = [2_500_000_000, { BroadcastBytes = { payload_hex = "494e435245415345445f574f524b4c4f4144", proto_tag = 1 } }]
+
+# A second node fails, unable to handle the increased load.
+[[directives]]
+At = [3_500_000_000, { Crash = { node = 1, duration = 2_000_000_000 } }]
+
+# Network stress is added, compounding the problem for the remaining nodes.
+[[directives]]
+At = [4_000_000_000, { LinkDelay = { link = 6, dist = { Uniform = { lo = 50_000_000, hi = 150_000_000 } } } }]
+
+# A third node fails under the combined load and network stress.
+[[directives]]
+At = [5_000_000_000, { Crash = { node = 2, duration = 1_500_000_000 } }]
+
+# With 3 of 7 nodes down, the cluster is operating at minimum quorum. This tests resilience.
+[[directives]]
+At = [5_500_000_000, { BroadcastBytes = { payload_hex = "4d554c5449504c455f4641494c555245535f54455354", proto_tag = 1 } }]
+
+# --- Phase 3: Partial recovery adds more stress (6s-10s) ---
+# As some nodes start to recover, we add more stress to test if the recovery is robust.
+[[directives]]
+At = [7_000_000_000, { LinkDelay = { link = 12, dist = { Uniform = { lo = 100_000_000, hi = 200_000_000 } } } }]
+[[directives]]
+At = [7_500_000_000, { StoreFault = { node = 3, kind = "FsyncDelay", rate = 0.3 } }]
+[[directives]]
+At = [7_600_000_000, { StoreFault = { node = 4, kind = "FsyncFail", rate = 0.1 } }]
+
+# The final cascade: one more node fails under the recovery load.
+[[directives]]
+At = [8_000_000_000, { Crash = { node = 3, duration = 1_000_000_000 } }]
+[[directives]]
+At = [8_500_000_000, { BroadcastBytes = { payload_hex = "4d4158494d554d5f535452455353", proto_tag = 1 } }]
+
+# --- Phase 4: Gradual recovery (10s-15s) ---
+# All faults are gradually healed, allowing the system to return to a stable state.
+[[directives]]
+At = [10_000_000_000, { LinkDelay = { link = 6, dist = { Const = 5_000_000 } } }]
+[[directives]]
+At = [10_500_000_000, { LinkDelay = { link = 12, dist = { Const = 5_000_000 } } }]
+[[directives]]
+At = [11_000_000_000, { StoreFault = { node = 3, kind = "FsyncDelay", rate = 0.0 } }]
+[[directives]]
+At = [11_100_000_000, { StoreFault = { node = 4, kind = "FsyncFail", rate = 0.0 } }]
+
+# --- Phase 5 & 6: Recovery verification and secondary cascade ---
+# After a period of stability, we trigger another, smaller cascade to see if the
+# system is now more resilient or if it fails in the same way.
+[[directives]]
+At = [12_000_000_000, { BroadcastBytes = { payload_hex = "5245434f564552595f564552494649434154494f4e", proto_tag = 1 } }]
+[[directives]]
+At = [13_000_000_000, { BroadcastBytes = { payload_hex = "46494e414c5f53544142494c495459", proto_tag = 1 } }]
+[[directives]]
+At = [14_000_000_000, { Crash = { node = 5, duration = 2_000_000_000 } }]
+[[directives]]
+At = [14_500_000_000, { BroadcastBytes = { payload_hex = "5345434f4e444152595f43415343414445", proto_tag = 1 } }]
+[[directives]]
+At = [15_500_000_000, { Crash = { node = 6, duration = 1_000_000_000 } }]
+[[directives]]
+At = [16_000_000_000, { BroadcastBytes = { payload_hex = "46494e414c5f54455354", proto_tag = 1 } }]

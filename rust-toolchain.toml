@@ -1,0 +1,6 @@
+# This file pins the Rust toolchain version to ensure deterministic builds.
+# The specification recommends a stable version, e.g., 1.78.0.
+
+[toolchain]
+channel = "1.78.0"
+components = ["rustfmt", "clippy"]

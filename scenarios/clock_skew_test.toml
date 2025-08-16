@@ -1,0 +1,75 @@
+# Scenario: Clock Skew Test
+#
+# Goal: Test protocol correctness under various degrees of clock desynchronization.
+#
+# Description:
+# Distributed systems often rely on timeouts for failure detection (e.g., Raft's
+# election timeout). If node clocks drift apart, these mechanisms can fail,
+# leading to spurious elections, incorrect leader assumptions, or performance
+# degradation. This scenario systematically introduces clock skew to test these
+# sensitivities.
+
+name = "clock_skew_test"
+seed = 2008
+topology = "FullMesh"
+
+[initial]
+nodes = 5
+proto = 1  # Raft protocol
+
+stop_at = 18_000_000_000  # 18 seconds
+
+# --- Phase 1: Normal operation (0-2s) ---
+# Establish a stable state with synchronized clocks.
+
+# --- Phase 2: Minor clock skew (2s-5s) ---
+# Introduce small, realistic time differences.
+[[directives]]
+At = [2_000_000_000, { ClockSkew = { node = 0, skew = 100_000_000 } }]     # +100ms
+[[directives]]
+At = [2_100_000_000, { ClockSkew = { node = 1, skew = -50_000_000 } }]     # -50ms
+[[directives]]
+At = [2_500_000_000, { BroadcastBytes = { payload_hex = "4d494e4f525f534b45575f54455354", proto_tag = 1 } }]
+
+# --- Phase 3: Moderate clock skew (5s-8s) ---
+# Increase skew to levels that might interfere with default timeouts.
+[[directives]]
+At = [5_000_000_000, { ClockSkew = { node = 2, skew = 500_000_000 } }]     # +500ms
+[[directives]]
+At = [5_100_000_000, { ClockSkew = { node = 3, skew = -300_000_000 } }]    # -300ms
+[[directives]]
+At = [6_500_000_000, { Crash = { node = 4, duration = 1_000_000_000 } }]   # Crash a node to force an election under skew.
+
+# --- Phase 4: Severe clock skew (8s-11s) ---
+# Introduce large time differences that are likely to break protocol assumptions.
+[[directives]]
+At = [8_000_000_000, { ClockSkew = { node = 0, skew = 2_000_000_000 } }]   # +2 seconds
+[[directives]]
+At = [8_100_000_000, { ClockSkew = { node = 1, skew = -1_500_000_000 } }]  # -1.5 seconds
+[[directives]]
+At = [9_000_000_000, { Partition = { sets = [[0, 1], [2, 3, 4]] } }] # Combine with a partition.
+[[directives]]
+At = [10_500_000_000, "HealPartition"]
+
+# --- Phase 5: Clock drift simulation (14s-16s) ---
+# Simulate clocks that gradually drift apart over time, a more realistic failure mode.
+[[directives]]
+At = [14_000_000_000, { ClockSkew = { node = 0, skew = 100_000_000 } }]
+[[directives]]
+At = [14_200_000_000, { ClockSkew = { node = 0, skew = 200_000_000 } }] # Drifting further
+[[directives]]
+At = [14_400_000_000, { ClockSkew = { node = 0, skew = 350_000_000 } }]
+[[directives]]
+At = [15_000_000_000, { BroadcastBytes = { payload_hex = "434c4f434b5f44524946545f54455354", proto_tag = 1 } }]
+
+# --- Phase 6: Clock synchronization recovery (16s-18s) ---
+# Simulate a clock synchronization event (like an NTP update) by gradually
+# reducing the skew back to zero, and verify the system stabilizes.
+[[directives]]
+At = [16_000_000_000, { ClockSkew = { node = 0, skew = 300_000_000 } }] # Correcting skew
+[[directives]]
+At = [16_200_000_000, { ClockSkew = { node = 0, skew = 150_000_000 } }]
+[[directives]]
+At = [16_600_000_000, { ClockSkew = { node = 0, skew = 0 } }] # Fully synchronized
+[[directives]]
+At = [17_500_000_000, { BroadcastBytes = { payload_hex = "46494e414c5f434c4f434b5f54455354", proto_tag = 1 } }]

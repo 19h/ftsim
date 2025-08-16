@@ -1,0 +1,14 @@
+[package]
+name = "ftsim-modelcheck"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ftsim-engine = { path = "../ftsim-engine" }
+loom = { workspace = true, optional = true }
+shuttle = { workspace = true, optional = true }
+
+[dev-dependencies]
+# Enable the dependencies only when running tests
+loom = { workspace = true }
+shuttle = { workspace = true }
